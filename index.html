@@ -1,436 +1,379 @@
-<!-- क्लाउड PWA नोटपैड (GitHub Stable Fix) -->
+<!-- क्लाउड नोटपैड (अंतिम स्थिर संस्करण) -->
 <html lang="hi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>क्लाउड PWA नोटपैड</title>
+    <!-- SEO OPTIMIZATION START -->
+    <title>Notepad - क्लाउड सिंक्रोनाइज्ड नोट्स ऐप | कभी भी, कहीं भी एक्सेस करें</title>
+    <meta name="description" content="आपका व्यक्तिगत क्लाउड नोटपैड। ईमेल लॉगिन के साथ अपने नोट्स को सुरक्षित रूप से सेव करें और किसी भी मोबाइल या PC पर एक्सेस करें।">
+    <meta name="robots" content="index, follow">
+    <!-- Google Search Console Verification Tag (Replace with your actual tag) -->
+    <!-- <meta name="google-site-verification" content="YOUR_VERIFICATION_CODE"> -->
+    <!-- SEO OPTIMIZATION END -->
+    
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome for Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <!-- Noto Sans for Hindi and Latin -->
+    <!-- Noto Sans and Font Awesome Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        body {
-            font-family: 'Noto Sans', sans-serif;
-            background-color: #f7fafc;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 1rem;
-        }
-        .scroll-list {
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-        /* Custom styled input/button focus */
-        .custom-focus:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5);
-            border-color: #4299e1;
-        }
-        /* Style for contenteditable area */
-        .content-editable {
-            min-height: 200px;
-            border: 1px solid #ccc;
-            padding: 10px;
-            border-radius: 6px;
-            background-color: white;
-            transition: all 0.3s;
-        }
-        .content-editable:focus {
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 1px #3b82f6;
-        }
-        .toolbar button {
-            padding: 5px 8px;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-        .toolbar button:hover {
-            background-color: #e5e7eb;
-        }
-        /* Ensure mobile buttons are large enough */
-        .large-touch-target {
-            min-height: 44px;
-            min-width: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+        body { font-family: 'Noto Sans', sans-serif; background-color: #f7fafc; }
+        .container { max-width: 600px; margin: 0 auto; padding: 1rem; }
+        .scroll-list { max-height: 70vh; overflow-y: auto; }
+        .custom-focus:focus { outline: none; box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5); border-color: #4299e1; }
+        .large-touch-target { min-height: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
 <body class="min-h-screen bg-gray-100">
 
-    <!-- PWA Service Worker Registration -->
-    <script>
-        // PWA Registration Logic
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                // In a single-file environment, we self-register the main file as a worker
-                navigator.serviceWorker.register(document.currentScript.src)
-                    .then(registration => {
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                        document.getElementById('pwa-status').textContent = 'PWA सक्रिय: ऑफ़लाइन कैशे उपलब्ध।';
-                    })
-                    .catch(error => {
-                        console.log('ServiceWorker registration failed: ', error);
-                        document.getElementById('pwa-status').textContent = 'PWA विफल: नेटवर्क आवश्यक।';
-                    });
-            });
-        }
-    </script>
-    
-    <!-- PWA Manifest Link -->
-    <link rel="manifest" href="manifest.webmanifest">
-    
-    <!-- Load ALL Firebase SDKs via <script> tags for better compatibility on GitHub Pages -->
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
-
-
-    <!-- Main App Logic -->
-    <script>
-        // Use standard non-module script tag for maximum compatibility on GitHub Pages
-
-        // --- PWA Manifest Logic (Workaround for single file) ---
-        const manifestContent = {
-            "name": "Cloud PWA Notepad",
-            "short_name": "PWA Notepad",
-            "description": "Offline-ready cloud notepad with rich text and code support.",
-            "start_url": "./",
-            "display": "standalone",
-            "background_color": "#f7fafc",
-            "theme_color": "#3b82f6",
-            "icons": [
-                {"src": "https://placehold.co/192x192/3b82f6/ffffff?text=NP", "sizes": "192x192", "type": "image/png"},
-                {"src": "https://placehold.co/512x512/3b82f6/ffffff?text=NP", "sizes": "512x512", "type": "image/png"}
-            ]
-        };
-        if (typeof document !== 'undefined') {
-            const manifestBlob = new Blob([JSON.stringify(manifestContent)], {type: 'application/json'});
-            const manifestUrl = URL.createObjectURL(manifestBlob);
-            document.querySelector('link[rel="manifest"]').setAttribute('href', manifestUrl);
-        }
-
-        // --- Firebase Configuration ---
-
-        // 🛑 [VERY IMPORTANT] PRODUCTION CONFIGURATION (User's Config Injected)
-        const productionFirebaseConfig = {
-            apiKey: "AIzaSyBAU0nLaIfeI6BA-B46q2T4cB3bri7cFeo",
-            authDomain: "notepad-8d412.firebaseapp.com",
-            projectId: "notepad-8d412",
-            storageBucket: "notepad-8d412.firebasestorage.app",
-            messagingSenderId: "732816272495",
-            appId: "1:732816272495:web:5089cc6488cfbb4e9cb19a",
-            measurementId: "G-Z28JW2NK8D"
-        };
+    <!-- Main App Logic (Using Platform-Injected SDKs) -->
+    <script type="module">
+        // --- Firebase Imports (Relying on Platform Injection) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // GLOBAL VARIABLES from Canvas Environment (used for testing here)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // Wait for window to load before starting app logic
+        window.addEventListener('load', function() {
 
-        // Choose the correct config:
-        const firebaseConfig = Object.keys(canvasFirebaseConfig).length !== 0 
-            ? canvasFirebaseConfig 
-            : productionFirebaseConfig;
-        
-        
-        // --- Firebase SDK Functions (Fetched from global scope after loading via <script> tags) ---
-        const { initializeApp } = firebase;
-        const { 
-            getAuth, 
-            signInAnonymously, 
-            signInWithCustomToken, 
-            onAuthStateChanged, 
-            createUserWithEmailAndPassword, 
-            signInWithEmailAndPassword, 
-            signOut 
-        } = firebase.auth;
+            // --- Firebase Configuration ---
+            const productionFirebaseConfig = {
+                apiKey: "AIzaSyBAU0nLaIfeI6BA-B46q2T4cB3bri7cFeo",
+                authDomain: "notepad-8d412.firebaseapp.com",
+                projectId: "notepad-8d412",
+                storageBucket: "notepad-8d412.firebasestorage.app",
+                messagingSenderId: "732816272495",
+                appId: "1:732816272495:web:5089cc6488cfbb4e9cb19a",
+                measurementId: "G-Z28JW2NK8D"
+            };
+            
+            // Platform Environment Variables
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const canvasFirebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        const { 
-            getFirestore, 
-            doc, 
-            addDoc, 
-            updateDoc, 
-            deleteDoc, 
-            onSnapshot, 
-            collection, 
-            query 
-        } = firebase.firestore;
-        
-        let app, db, auth, userId = null;
-        let isAuthReady = false;
+            const firebaseConfig = Object.keys(canvasFirebaseConfig).length !== 0 
+                ? canvasFirebaseConfig 
+                : productionFirebaseConfig;
+            
+            
+            let app, db, auth, userId = null;
 
-        // Utility to display messages/errors
-        function showMessage(msg, isError = false) {
-            const container = document.getElementById('message-container');
-            container.innerHTML = `<div class="p-3 mt-4 rounded-lg text-sm font-semibold ${isError ? 'bg-red-500 text-white' : 'bg-green-100 text-green-800'}">${isError ? '❌ त्रुटि' : '✅ सफलता'}: ${msg}</div>`;
-            setTimeout(() => {
-                container.innerHTML = '';
-            }, 6000); // 6 seconds
-        }
-
-        // Error message mapping for Firebase Auth (in Hindi)
-        function getAuthErrorMessage(errorCode) {
-            switch (errorCode) {
-                case 'auth/email-already-in-use': return 'यह ईमेल पहले ही उपयोग में है। कृपया लॉगिन करें या दूसरा ईमेल चुनें।';
-                case 'auth/invalid-email': return 'ईमेल का फॉर्मेट गलत है।';
-                case 'auth/weak-password': return 'पासवर्ड बहुत कमजोर है। कृपया कम से कम 6 अक्षर/संख्या का उपयोग करें।';
-                case 'auth/user-not-found': return 'इस ईमेल से कोई खाता नहीं मिला।';
-                case 'auth/wrong-password': return 'पासवर्ड गलत है। कृपया पुनः प्रयास करें।';
-                case 'auth/operation-not-allowed': return 'साइन-इन मेथड सक्षम नहीं है। (Firebase Console में Email/Password को सक्षम करें)';
-                default: return `प्रमाणीकरण विफल (कोड: ${errorCode})।`;
+            // Utility to display messages/errors
+            function showMessage(msg, isError = false) {
+                const container = document.getElementById('message-container');
+                container.innerHTML = `<div class="p-3 mt-4 rounded-lg text-sm font-semibold ${isError ? 'bg-red-500 text-white' : 'bg-green-100 text-green-800'}">${isError ? '❌ त्रुटि' : '✅ सफलता'}: ${msg}</div>`;
+                setTimeout(() => { container.innerHTML = ''; }, 6000);
             }
-        }
 
-        // --- Firebase Initialization and Auth Logic ---
-        function initFirebase() {
-            try {
-                if (Object.keys(firebaseConfig).length === 0 || !firebaseConfig.apiKey) {
-                    throw new Error("Firebase कॉन्फ़िगरेशन उपलब्ध नहीं है। कृपया इसे कोड में हार्डकोड करें।");
+            // Error message mapping for Firebase Auth
+            function getAuthErrorMessage(errorCode) {
+                switch (errorCode) {
+                    case 'auth/email-already-in-use': return 'यह ईमेल पहले ही उपयोग में है। कृपया लॉगिन करें या दूसरा ईमेल चुनें।';
+                    case 'auth/invalid-email': return 'ईमेल का फॉर्मेट गलत है।';
+                    case 'auth/weak-password': return 'पासवर्ड बहुत कमजोर है। कृपया कम से कम 6 अक्षर/संख्या का उपयोग करें।';
+                    case 'auth/user-not-found': return 'इस ईमेल से कोई खाता नहीं मिला।';
+                    case 'auth/wrong-password': return 'पासवर्ड गलत है। कृपया पुनः प्रयास करें।';
+                    case 'auth/operation-not-allowed': return 'साइन-इन मेथड सक्षम नहीं है। (Firebase Console में Email/Password को सक्षम करें)';
+                    default: return `प्रमाणीकरण विफल (कोड: ${errorCode})।`;
                 }
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-            } catch (error) {
-                document.getElementById('loading-screen').innerHTML = `
-                    <div class="text-center p-8 bg-white shadow-xl rounded-lg mt-20">
-                        <p class="text-red-600 font-bold mb-4">आरंभिक त्रुटि:</p>
-                        <p class="text-gray-700">${error.message}</p>
-                        <p class="text-sm mt-4">कोड लोड हो गया है, लेकिन Firebase शुरू नहीं हो पाया।</p>
-                    </div>
-                `;
-                return;
             }
 
-            // Listen for auth state changes
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    // Logged in
-                    userId = user.uid;
-                    isAuthReady = true;
-
-                    // This logic prevents the environment's anonymous sign-in from interfering 
-                    if (user.isAnonymous && !localStorage.getItem('user_signed_out')) {
-                        // Allow anonymous access if no explicit sign-out has occurred
+            // --- Firebase Initialization and Auth Logic ---
+            function initFirebase() {
+                try {
+                    if (Object.keys(firebaseConfig).length === 0 || !firebaseConfig.apiKey) {
+                        throw new Error("Firebase कॉन्फ़िगरेशन उपलब्ध नहीं है। कृपया इसे कोड में हार्डकोड करें।");
                     }
-                    
-                    document.getElementById('auth-status').innerText = `लॉगिन सफल (यूज़र ID: ${userId.substring(0, 8)}...)`;
-                    document.getElementById('auth-status').classList.replace('bg-yellow-100', 'bg-green-100');
-                    document.getElementById('auth-status-container').classList.add('hidden');
-                    document.getElementById('main-app-content').classList.remove('hidden');
-                    document.getElementById('loading-screen').classList.add('hidden');
-                    
-                    // Start listening for notes
-                    listenForNotes();
+                    app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                } catch (error) {
+                    document.getElementById('loading-screen').innerHTML = `
+                        <div class="text-center p-8 bg-white shadow-xl rounded-lg mt-20">
+                            <p class="text-red-600 font-bold mb-4">आरंभिक त्रुटि:</p>
+                            <p class="text-gray-700">${error.message}</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // CRITICAL: Hide loading screen once Firebase is initialized
+                document.getElementById('loading-screen').classList.add('hidden');
 
-                } else {
-                    // Logged out
-                    userId = null;
-                    isAuthReady = true;
 
-                    document.getElementById('auth-status').innerText = 'लॉग आउट किया गया या कोई यूज़र नहीं';
-                    document.getElementById('auth-status').classList.replace('bg-green-100', 'bg-yellow-100');
-                    document.getElementById('auth-status-container').classList.remove('hidden');
-                    document.getElementById('main-app-content').classList.add('hidden');
-                    document.getElementById('loading-screen').classList.add('hidden');
+                // Listen for auth state changes
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        
+                        document.getElementById('auth-status').innerText = `लॉगिन सफल (यूज़र ID: ${userId})`;
+                        document.getElementById('auth-status').classList.replace('bg-yellow-100', 'bg-green-100');
+                        document.getElementById('auth-screen').classList.add('hidden');
+                        document.getElementById('main-app-content').classList.remove('hidden');
+                        
+                        listenForNotes();
 
-                    if (localStorage.getItem('user_signed_out') === 'true' || !initialAuthToken) {
-                        // User explicitly logged out OR running on production (no initial token), show auth screen
-                        document.getElementById('auth-screen').classList.remove('hidden');
-                        document.getElementById('loading-screen').classList.add('hidden');
                     } else {
-                        // Attempt initial auth (custom token if available)
-                        try {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } catch (error) {
-                            console.error("Custom token sign-in failed. Falling back to anonymous.", error);
-                            await signInAnonymously(auth);
-                        }
-                    }
-                }
-            });
-
-            // Handle the sign out explicitly
-            document.getElementById('logout-btn').addEventListener('click', async () => {
-                if (auth) {
-                    try {
-                        localStorage.setItem('user_signed_out', 'true');
-                        await signOut(auth);
-                        showMessage('आप सफलतापूर्वक लॉग आउट कर चुके हैं।', false);
+                        userId = null;
+                        document.getElementById('auth-status').innerText = 'लॉग आउट किया गया या कोई यूज़र नहीं';
+                        document.getElementById('auth-status').classList.replace('bg-green-100', 'bg-yellow-100');
                         document.getElementById('auth-screen').classList.remove('hidden');
                         document.getElementById('main-app-content').classList.add('hidden');
-                        document.getElementById('loading-screen').classList.add('hidden');
-
-                    } catch (error) {
-                        showMessage(`लॉग आउट विफल: ${error.message}`, true);
                     }
-                }
-            });
-        }
-
-        // --- Note Management Logic ---
-        let notesSnapshotUnsubscribe = null;
-        let allNotes = [];
-        let currentNoteId = null;
-
-        function getNotesCollectionRef() {
-            // Use private data path: /artifacts/{appId}/users/{userId}/{your_collection_name}
-            const currentAppId = Object.keys(canvasFirebaseConfig).length !== 0 ? appId : firebaseConfig.projectId;
-
-            const notesCollectionPath = `/artifacts/${currentAppId}/users/${userId}/notes`;
-            return collection(db, notesCollectionPath);
-        }
-
-        function listenForNotes() {
-            if (!db || !userId) return;
-
-            if (notesSnapshotUnsubscribe) {
-                notesSnapshotUnsubscribe(); // Unsubscribe from previous user/state
-            }
-
-            const q = query(getNotesCollectionRef());
-
-            notesSnapshotUnsubscribe = onSnapshot(q, (snapshot) => {
-                allNotes = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                })).sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)); // Sort newest first
-
-                renderNotesList();
-            }, (error) => {
-                showMessage(`नोट्स लोड करने में त्रुटि: ${error.message}`, true);
-            });
-        }
-
-        function renderNotesList() {
-            const listContainer = document.getElementById('notes-list');
-            listContainer.innerHTML = '';
-
-            if (allNotes.length === 0) {
-                listContainer.innerHTML = '<p class="text-gray-500 text-center mt-4">अभी कोई नोट सेव नहीं है। नया नोट जोड़ें!</p>';
-                return;
-            }
-
-            allNotes.forEach(note => {
-                const noteElement = document.createElement('div');
-                const typeIcon = getFileIcon(note.type);
-                
-                noteElement.className = 'flex justify-between items-center p-4 mb-2 bg-white rounded-lg shadow hover:shadow-md transition cursor-pointer large-touch-target';
-                noteElement.innerHTML = `
-                    <div class="flex items-center space-x-3 w-4/5">
-                        <i class="${typeIcon} text-xl text-blue-500"></i>
-                        <span class="font-semibold text-gray-800 truncate">${note.title}</span>
-                    </div>
-                    <button data-id="${note.id}" class="delete-note-btn text-red-500 hover:text-red-700 p-2 rounded-full large-touch-target" title="डिलीट करें">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                `;
-                noteElement.querySelector('span').addEventListener('click', () => openNoteModal(note.id));
-                noteElement.querySelector('.delete-note-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    deleteNote(note.id);
                 });
-                listContainer.appendChild(noteElement);
-            });
-        }
 
-        function getFileIcon(type) {
-            switch (type) {
-                case 'html': return 'fab fa-html5 text-orange-600';
-                case 'css': return 'fab fa-css3-alt text-blue-600';
-                case 'js': return 'fab fa-js-square text-yellow-500';
-                case 'ts': return 'fas fa-code text-blue-800';
-                case 'tsx': return 'fab fa-react text-blue-400';
-                case 'doc': return 'fas fa-file-word text-blue-500';
-                case 'pdf': return 'fas fa-file-pdf text-red-600';
-                case 'img': return 'fas fa-image text-green-500';
-                case 'audio': return 'fas fa-volume-up text-purple-500';
-                case 'video': return 'fas fa-video text-red-700';
-                default: return 'fas fa-file-alt'; // General text
+                // Handle the sign out explicitly
+                document.getElementById('logout-btn').addEventListener('click', async () => {
+                    if (auth) {
+                        try {
+                            await signOut(auth);
+                            showMessage('आप सफलतापूर्वक लॉग आउट कर चुके हैं।', false);
+
+                        } catch (error) {
+                            showMessage(`लॉग आउट विफल: ${error.message}`, true);
+                        }
+                    }
+                });
             }
-        }
 
-        async function saveNote(id, title, content, type) {
-            if (!db || !userId) return showMessage('लॉगिन नहीं है। कृपया पहले साइन इन करें।', true);
+            // --- Note Management Logic ---
+            let notesSnapshotUnsubscribe = null;
+            let allNotes = [];
+            let currentNoteId = null;
+
+            function getNotesCollectionRef() {
+                // Use project ID for unique collection path
+                const currentAppId = firebaseConfig.projectId;
+                // Private data path: /artifacts/{appId}/users/{userId}/{your_collection_name}
+                const notesCollectionPath = `/artifacts/${currentAppId}/users/${userId}/notes`;
+                return collection(db, notesCollectionPath);
+            }
+
+            function listenForNotes() {
+                if (!db || !userId) return;
+                if (notesSnapshotUnsubscribe) { notesSnapshotUnsubscribe(); }
+
+                const q = query(getNotesCollectionRef());
+
+                notesSnapshotUnsubscribe = onSnapshot(q, (snapshot) => {
+                    allNotes = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    })).sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)); 
+                    renderNotesList();
+                }, (error) => {
+                    showMessage(`नोट्स लोड करने में त्रुटि: ${error.message}`, true);
+                });
+            }
             
-            // Basic validation
-            if (!title.trim()) return showMessage('कृपया नोट के लिए एक शीर्षक (Title) दर्ज करें।', true);
-            if (!content.trim()) return showMessage('नोट का कंटेंट खाली नहीं हो सकता।', true);
-
-            const noteData = {
-                title: title.trim(),
-                content: content.trim(),
-                type: type,
-                timestamp: new Date()
-            };
-
-            try {
-                if (id) {
-                    await updateDoc(doc(getNotesCollectionRef(), id), noteData);
-                    showMessage('नोट सफलतापूर्वक अपडेट किया गया!', false);
-                } else {
-                    await addDoc(getNotesCollectionRef(), noteData);
-                    showMessage('नया नोट सफलतापूर्वक सेव किया गया!', false);
-                }
-                document.getElementById('new-note-form').reset();
-                document.getElementById('new-note-content').innerHTML = ''; // Clear rich text area
-            } catch (e) {
-                showMessage(`नोट सेव करने में त्रुटि: ${e.message}`, true);
+            // Global functions for delete modal control
+            function showDeleteConfirmModal(noteId) {
+                document.getElementById('delete-confirm-modal').classList.remove('hidden');
+                document.getElementById('confirm-delete-btn').onclick = () => {
+                    deleteNote(noteId);
+                    hideDeleteConfirmModal();
+                };
             }
-        }
-        
-        async function deleteNote(id) {
-            if (!db || !userId) return showMessage('लॉगिन नहीं है।', true);
-            // Replaced alert() with confirm() which we should try to avoid, but is fine here for deletion confirmation
-            if (!confirm('क्या आप वाकई इस नोट को डिलीट करना चाहते हैं?')) return; 
+            function hideDeleteConfirmModal() {
+                document.getElementById('delete-confirm-modal').classList.add('hidden');
+            }
+            document.getElementById('cancel-delete-btn').addEventListener('click', hideDeleteConfirmModal);
 
-            try {
-                await deleteDoc(doc(getNotesCollectionRef(), id));
-                showMessage('नोट सफलतापूर्वक डिलीट किया गया।', false);
-                if (currentNoteId === id) {
+
+            function renderNotesList() {
+                const listContainer = document.getElementById('notes-list');
+                listContainer.innerHTML = '';
+
+                if (allNotes.length === 0) {
+                    listContainer.innerHTML = '<p class="text-gray-500 text-center mt-4">अभी कोई नोट सेव नहीं है। नया नोट जोड़ें!</p>';
+                    return;
+                }
+
+                allNotes.forEach(note => {
+                    const noteElement = document.createElement('div');
+                    noteElement.className = 'flex justify-between items-center p-4 mb-2 bg-white rounded-lg shadow hover:shadow-md transition cursor-pointer large-touch-target';
+                    noteElement.innerHTML = `
+                        <div class="flex items-center space-x-3 w-4/5">
+                            <i class="fas fa-file-alt text-xl text-blue-500"></i>
+                            <span class="font-semibold text-gray-800 truncate" data-id="${note.id}">${note.title}</span>
+                        </div>
+                        <button data-id="${note.id}" class="delete-note-btn text-red-500 hover:text-red-700 p-2 rounded-full large-touch-target" title="डिलीट करें">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    `;
+                    noteElement.querySelector('span').addEventListener('click', () => openNoteModal(note.id));
+                    noteElement.querySelector('.delete-note-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        // Call the custom modal instead of prohibited confirm()
+                        showDeleteConfirmModal(note.id);
+                    });
+                    listContainer.appendChild(noteElement);
+                });
+            }
+
+            async function saveNote(id, title, content) {
+                if (!db || !userId) return showMessage('लॉगिन नहीं है। कृपया पहले साइन इन करें।', true);
+                if (!title.trim()) return showMessage('कृपया नोट के लिए एक शीर्षक (Title) दर्ज करें।', true);
+                if (!content.trim()) return showMessage('नोट का कंटेंट खाली नहीं हो सकता।', true);
+
+                const noteData = {
+                    title: title.trim(),
+                    content: content.trim(),
+                    timestamp: new Date()
+                };
+
+                try {
+                    if (id) {
+                        await updateDoc(doc(getNotesCollectionRef(), id), noteData);
+                        showMessage('नोट सफलतापूर्वक अपडेट किया गया!', false);
+                    } else {
+                        await addDoc(getNotesCollectionRef(), noteData);
+                        showMessage('नया नोट सफलतापूर्वक सेव किया गया!', false);
+                    }
+                    document.getElementById('new-note-form').reset();
+                    document.getElementById('new-note-content').value = '';
+                } catch (e) {
+                    showMessage(`नोट सेव करने में त्रुटि: ${e.message}`, true);
+                }
+            }
+            
+            async function deleteNote(id) {
+                if (!db || !userId) return showMessage('लॉगिन नहीं है।', true);
+                try {
+                    await deleteDoc(doc(getNotesCollectionRef(), id));
+                    showMessage('नोट सफलतापूर्वक डिलीट किया गया।', false);
                     closeNoteModal();
+                } catch (e) {
+                    showMessage(`नोट डिलीट करने में त्रुटि: ${e.message}`, true);
                 }
-            } catch (e) {
-                showMessage(`नोट डिलीट करने में त्रुटि: ${e.message}`, true);
-            }
-        }
-
-        function openNoteModal(id) {
-            const note = allNotes.find(n => n.id === id);
-            if (!note) return showMessage('नोट नहीं मिला।', true);
-
-            currentNoteId = id;
-
-            const modalTitle = document.getElementById('modal-title');
-            const modalContent = document.getElementById('modal-content-editable');
-            const modalType = document.getElementById('modal-file-type');
-            const saveModalBtn = document.getElementById('save-modal-btn');
-            const modalToolbar = document.getElementById('modal-toolbar');
-
-            modalTitle.value = note.title;
-            modalType.value = note.type;
-            
-            // Set content and disable rich text for code files
-            if (['html', 'css', 'js', 'ts', 'tsx'].includes(note.type)) {
-                modalContent.textContent = note.content; // Use textContent for code
-                modalContent.setAttribute('contenteditable', 'true'); // Still editable as code
-                modalToolbar.classList.add('hidden');
-            } else {
-                modalContent.innerHTML = note.content; // Use innerHTML for rich text
-                modalContent.setAttribute('contenteditable', 'true');
-                modalToolbar.classList.remove('hidden');
             }
 
-            modalContent.classList.remove('hidden'); // Ensure it's visible
+            function openNoteModal(id) {
+                const note = allNotes.find(n => n.id === id);
+                if (!note) return showMessage('नोट नहीं मिला।', true);
+
+                currentNoteId = id;
+
+                document.getElementById('modal-title').value = note.title;
+                document.getElementById('modal-content').value = note.content; 
+                
+                document.getElementById('save-modal-btn').onclick = () => {
+                    const newTitle = document.getElementById('modal-title').value;
+                    const newContent = document.getElementById('modal-content').value;
+                    saveNote(id, newTitle, newContent);
+                    closeNoteModal();
+                };
+
+                document.getElementById('note-modal').classList.remove('hidden');
+            }
+
+            function closeNoteModal() {
+                document.getElementById('note-modal').classList.add('hidden');
+                currentNoteId = null;
+            }
+
+            // --- Auth Screen Logic ---
+            const authActionBtn = document.getElementById('auth-action-btn');
+            const authToggleLink = document.getElementById('auth-toggle-link');
+            const authHeading = document.getElementById('auth-heading');
             
-            // Update the save button handler
-            saveModalBtn.onclick = () => {
-                const newTitle = modalTitle.value;
-                const newType = modalType.value;
-                // Get content based on type (textContent for code, innerHTML for rich text)
-                const newConten
+            let isSignUp = false;
+            
+            authToggleLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                isSignUp = !isSignUp;
+                authHeading.innerText = isSignUp ? 'रजिस्टर (नया खाता बनाएँ)' : 'साइन इन करें';
+                authActionBtn.innerText = isSignUp ? 'रजिस्टर करें' : 'साइन इन करें';
+                authToggleLink.innerText = isSignUp ? 'क्या आपका खाता पहले से है? साइन इन करें' : 'नया खाता बनाएँ (रजिस्टर करें)';
+            });
+
+            authActionBtn.addEventListener('click', async () => {
+                const email = document.getElementById('auth-email').value;
+                const password = document.getElementById('auth-password').value;
+
+                if (!email || !password) return showMessage('कृपया ईमेल और पासवर्ड दोनों दर्ज करें।', true);
+                if (password.length < 6) return showMessage('पासवर्ड बहुत कमजोर है। कृपया कम से कम 6 अक्षर/संख्या का उपयोग करें।', true);
+
+                try {
+                    if (isSignUp) {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                        showMessage('खाता सफलतापूर्वक बन गया! अब आप लॉगिन हैं।', false);
+                    } else {
+                        await signInWithEmailAndPassword(auth, email, password);
+                        showMessage('सफलतापूर्वक साइन इन किया गया!', false);
+                    }
+                    document.getElementById('auth-screen').classList.add('hidden');
+
+                } catch (error) {
+                    const errorMessage = getAuthErrorMessage(error.code);
+                    showMessage(errorMessage, true);
+                    console.error("Firebase Auth Error:", error.code, error.message);
+                }
+            });
+
+            // Password Show/Hide Toggle
+            const passwordInput = document.getElementById('auth-password');
+            const passwordToggle = document.getElementById('password-toggle');
+            passwordToggle.addEventListener('click', () => {
+                const type = passwordInput.type === 'password' ? 'text' : 'password';
+                passwordInput.type = type;
+                passwordToggle.querySelector('i').className = type === 'password' ? 'fas fa-eye-slash' : 'fas fa-eye';
+            });
+            
+            // --- New Note Form Handler ---
+            document.getElementById('new-note-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const title = document.getElementById('new-note-title').value;
+                const content = document.getElementById('new-note-content').value; 
+
+                saveNote(null, title, content);
+            });
+
+            // Start the app logic
+            initFirebase();
+        }); // End of window.load listener
+
+    </script>
+
+    <!-- PWA Status -->
+    <div id="pwa-status" class="fixed top-0 left-0 right-0 bg-blue-100 text-blue-800 text-center text-xs py-1 font-medium">
+        PWA स्थिति: PWA इंस्टॉल करने योग्य है।
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-gray-100 flex items-center justify-center z-50">
+        <div class="text-center p-8 bg-white shadow-xl rounded-lg">
+            <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
+            <p class="text-lg font-semibold text-gray-700">क्लाउड नोटपैड लोड हो रहा है...</p>
+            <p class="text-sm text-gray-500 mt-2">प्रमाणीकरण की प्रतीक्षा है।</p>
+        </div>
+    </div>
+    
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="container pt-12 hidden">
+        <div class="bg-white p-6 md:p-10 shadow-xl rounded-xl">
+            <!-- H1 Tag for SEO -->
+            <h1 id="auth-heading" class="text-3xl font-bold text-center text-gray-800 mb-6">साइन इन करें</h1>
+            
+            <div id="message-container"></div>
+
+            <form id="auth-form" class="space-y-4">
+                <div>
+                    <label for="auth-email" class="block text-sm font-medium text-gray-700 mb-1">ईमेल</label>
+                    <input type="email" id="auth-email" class="w-full p-3 border border-gray-300 rounded-lg custom-focus" placeholder="आपका ईमेल पता" required>
+                </div>
+                <div>
+                    <label for="auth-password" class="block text-sm font-medium text-gray-700 mb-1">पासवर्ड</label>
+                    <div class="relative">
+                        <input type="password" id="auth-password" class="w-full p-3 border border-gray-300 rounded-lg custom-focus pr-10" placeholder="कम से कम 6 अक्षर" required>
+                        <span id="password-toggle" class="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer large-touch-target">
+                            <i class="fas fa-eye-slash text-gray-400 hover:text-gray-600"></i>
+                        </span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">पासवर्ड 6 या अधिक अक्षरों का होना चाहिए।</p>
+                </div>
+                <button type="button" id="auth-action-btn" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md large-touch-target">साइन इन करें</button>
+            </form>
+            <p class="mt-6 text-center text-sm">
+                
