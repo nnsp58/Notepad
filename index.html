@@ -1,4 +1,4 @@
-<!-- क्लाउड PWA नोटपैड (GitHub Production Ready) -->
+<!-- क्लाउड PWA नोटपैड (GitHub Stable Fix) -->
 <html lang="hi">
 <head>
     <meta charset="UTF-8">
@@ -85,7 +85,16 @@
     <!-- PWA Manifest Link -->
     <link rel="manifest" href="manifest.webmanifest">
     
-    <script type="module">
+    <!-- Load ALL Firebase SDKs via <script> tags for better compatibility on GitHub Pages -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+
+
+    <!-- Main App Logic -->
+    <script>
+        // Use standard non-module script tag for maximum compatibility on GitHub Pages
+
         // --- PWA Manifest Logic (Workaround for single file) ---
         const manifestContent = {
             "name": "Cloud PWA Notepad",
@@ -125,15 +134,33 @@
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // Choose the correct config:
-        // Use the Canvas config if running in the environment, otherwise use the hardcoded production config.
         const firebaseConfig = Object.keys(canvasFirebaseConfig).length !== 0 
             ? canvasFirebaseConfig 
             : productionFirebaseConfig;
         
-        // --- Firebase SDKs ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Firebase SDK Functions (Fetched from global scope after loading via <script> tags) ---
+        const { initializeApp } = firebase;
+        const { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged, 
+            createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword, 
+            signOut 
+        } = firebase.auth;
+
+        const { 
+            getFirestore, 
+            doc, 
+            addDoc, 
+            updateDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            collection, 
+            query 
+        } = firebase.firestore;
         
         let app, db, auth, userId = null;
         let isAuthReady = false;
@@ -174,7 +201,7 @@
                     <div class="text-center p-8 bg-white shadow-xl rounded-lg mt-20">
                         <p class="text-red-600 font-bold mb-4">आरंभिक त्रुटि:</p>
                         <p class="text-gray-700">${error.message}</p>
-                        <p class="text-sm mt-4">कृपया Firebase कॉन्फ़िगरेशन को कोड में पेस्ट करें और सुनिश्चित करें कि वह सही है।</p>
+                        <p class="text-sm mt-4">कोड लोड हो गया है, लेकिन Firebase शुरू नहीं हो पाया।</p>
                     </div>
                 `;
                 return;
@@ -406,16 +433,4 @@
                 const newTitle = modalTitle.value;
                 const newType = modalType.value;
                 // Get content based on type (textContent for code, innerHTML for rich text)
-                const newContent = ['html', 'css', 'js', 'ts', 'tsx'].includes(newType) 
-                    ? modalContent.textContent 
-                    : modalContent.innerHTML;
-
-                saveNote(id, newTitle, newContent, newType);
-                closeNoteModal();
-            };
-
-            document.getElementById('note-modal').classList.remove('hidden');
-        }
-
-        function closeNoteModal() {
-            document.getElementById('note-
+                const newConten
