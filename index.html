@@ -1,0 +1,758 @@
+<!-- क्लाउड PWA नोटपैड (ऑफलाइन सपोर्ट) -->
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>क्लाउड PWA नोटपैड</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Noto Sans for Hindi and Latin -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background-color: #f7fafc;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        .scroll-list {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        /* Custom styled input/button focus */
+        .custom-focus:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5);
+            border-color: #4299e1;
+        }
+        /* Style for contenteditable area */
+        .content-editable {
+            min-height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 6px;
+            background-color: white;
+            transition: all 0.3s;
+        }
+        .content-editable:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
+        .toolbar button {
+            padding: 5px 8px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        .toolbar button:hover {
+            background-color: #e5e7eb;
+        }
+        /* Ensure mobile buttons are large enough */
+        .large-touch-target {
+            min-height: 44px;
+            min-width: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-100">
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        // PWA Registration Logic
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // A single script that acts as both service worker and main script
+                // In a single-file environment, we self-register the main file as a worker
+                navigator.serviceWorker.register(document.currentScript.src)
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                        document.getElementById('pwa-status').textContent = 'PWA सक्रिय: ऑफ़लाइन कैशे उपलब्ध।';
+                    })
+                    .catch(error => {
+                        console.log('ServiceWorker registration failed: ', error);
+                        document.getElementById('pwa-status').textContent = 'PWA विफल: नेटवर्क आवश्यक।';
+                    });
+            });
+        }
+    </script>
+    
+    <!-- PWA Manifest Link (The content is hardcoded below in a script to comply with single file rule) -->
+    <!-- Manifest is only effective when deployed, but link is necessary -->
+    <link rel="manifest" href="manifest.webmanifest">
+    
+    <script type="module">
+        // --- PWA Manifest Logic (In a real scenario, this would be a separate file) ---
+        // This is a common workaround to include manifest in a single file for demonstration.
+        const manifestContent = {
+            "name": "Cloud PWA Notepad",
+            "short_name": "PWA Notepad",
+            "description": "Offline-ready cloud notepad with rich text and code support.",
+            "start_url": "./",
+            "display": "standalone",
+            "background_color": "#f7fafc",
+            "theme_color": "#3b82f6",
+            "icons": [
+                {
+                    "src": "https://placehold.co/192x192/3b82f6/ffffff?text=NP",
+                    "sizes": "192x192",
+                    "type": "image/png"
+                },
+                {
+                    "src": "https://placehold.co/512x512/3b82f6/ffffff?text=NP",
+                    "sizes": "512x512",
+                    "type": "image/png"
+                }
+            ]
+        };
+
+        // Inject the manifest for PWA detection
+        if (typeof document !== 'undefined') {
+            const manifestBlob = new Blob([JSON.stringify(manifestContent)], {type: 'application/json'});
+            const manifestUrl = URL.createObjectURL(manifestBlob);
+            document.querySelector('link[rel="manifest"]').setAttribute('href', manifestUrl);
+        }
+
+        // Firebase SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Global variables from Canvas Environment (MANDATORY USE)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth, userId = null;
+        let isAuthReady = false;
+
+        // Utility to display messages/errors
+        function showMessage(msg, isError = false) {
+            const container = document.getElementById('message-container');
+            container.innerHTML = `<div class="p-3 mt-4 rounded-lg text-sm font-semibold ${isError ? 'bg-red-500 text-white' : 'bg-green-100 text-green-800'}">${isError ? '❌ त्रुटि' : '✅ सफलता'}: ${msg}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 6000); // 6 seconds
+        }
+
+        // Error message mapping for Firebase Auth (in Hindi)
+        function getAuthErrorMessage(errorCode) {
+            switch (errorCode) {
+                case 'auth/email-already-in-use': return 'यह ईमेल पहले ही उपयोग में है। कृपया लॉगिन करें या दूसरा ईमेल चुनें।';
+                case 'auth/invalid-email': return 'ईमेल का फॉर्मेट गलत है।';
+                case 'auth/weak-password': return 'पासवर्ड बहुत कमजोर है। कृपया कम से कम 6 अक्षर/संख्या का उपयोग करें।';
+                case 'auth/user-not-found': return 'इस ईमेल से कोई खाता नहीं मिला।';
+                case 'auth/wrong-password': return 'पासवर्ड गलत है। कृपया पुनः प्रयास करें।';
+                case 'auth/operation-not-allowed': return 'साइन-इन मेथड सक्षम नहीं है। (Firebase Console में Email/Password को सक्षम करें)';
+                default: return `प्रमाणीकरण विफल (कोड: ${errorCode})।`;
+            }
+        }
+
+        // --- Firebase Initialization and Auth Logic ---
+        function initFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length === 0) {
+                    throw new Error("Firebase कॉन्फ़िगरेशन उपलब्ध नहीं है।");
+                }
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+            } catch (error) {
+                document.getElementById('loading-screen').innerHTML = `
+                    <div class="text-center p-8 bg-white shadow-xl rounded-lg mt-20">
+                        <p class="text-red-600 font-bold mb-4">आरंभिक त्रुटि:</p>
+                        <p class="text-gray-700">${error.message}</p>
+                        <p class="text-sm mt-4">कृपया सुनिश्चित करें कि Firebase कॉन्फ़िगरेशन सही है।</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Listen for auth state changes
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    // Logged in
+                    userId = user.uid;
+                    isAuthReady = true;
+
+                    // Check if the user was just anonymously signed in by the environment and immediately sign them out
+                    // unless they are actively trying to sign in/up. This prevents environment's anonymous sign-in from overriding the custom flow.
+                    if (user.isAnonymous && !localStorage.getItem('user_signed_out')) {
+                        // We allow anonymous sign-in for initial quick access, but prioritize manual sign-in
+                    }
+                    
+                    document.getElementById('auth-status').innerText = `लॉगिन सफल (यूज़र ID: ${userId.substring(0, 8)}...)`;
+                    document.getElementById('auth-status').classList.replace('bg-yellow-100', 'bg-green-100');
+                    document.getElementById('auth-status-container').classList.add('hidden');
+                    document.getElementById('main-app-content').classList.remove('hidden');
+                    document.getElementById('loading-screen').classList.add('hidden');
+                    
+                    // Start listening for notes
+                    listenForNotes();
+
+                } else {
+                    // Logged out
+                    userId = null;
+                    isAuthReady = true;
+
+                    document.getElementById('auth-status').innerText = 'लॉग आउट किया गया या कोई यूज़र नहीं';
+                    document.getElementById('auth-status').classList.replace('bg-green-100', 'bg-yellow-100');
+                    document.getElementById('auth-status-container').classList.remove('hidden');
+                    document.getElementById('main-app-content').classList.add('hidden');
+                    document.getElementById('loading-screen').classList.add('hidden');
+
+                    if (localStorage.getItem('user_signed_out') === 'true') {
+                        // User explicitly logged out, show auth screen
+                        document.getElementById('auth-screen').classList.remove('hidden');
+                        document.getElementById('loading-screen').classList.add('hidden');
+                    } else {
+                        // Attempt initial auth (custom token if available)
+                        if (initialAuthToken) {
+                            try {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } catch (error) {
+                                console.error("Custom token sign-in failed. Falling back to anonymous if allowed.", error);
+                                await signInAnonymously(auth);
+                            }
+                        } else {
+                            // If no token, sign in anonymously for initial access
+                            await signInAnonymously(auth);
+                        }
+                    }
+                }
+            });
+
+            // Handle the sign out explicitly
+            document.getElementById('logout-btn').addEventListener('click', async () => {
+                if (auth) {
+                    try {
+                        localStorage.setItem('user_signed_out', 'true');
+                        await signOut(auth);
+                        showMessage('आप सफलतापूर्वक लॉग आउट कर चुके हैं।', false);
+                        document.getElementById('auth-screen').classList.remove('hidden');
+                        document.getElementById('main-app-content').classList.add('hidden');
+                        document.getElementById('loading-screen').classList.add('hidden');
+
+                    } catch (error) {
+                        showMessage(`लॉग आउट विफल: ${error.message}`, true);
+                    }
+                }
+            });
+        }
+
+        // --- Note Management Logic ---
+        let notesSnapshotUnsubscribe = null;
+        let allNotes = [];
+        let currentNoteId = null;
+
+        function getNotesCollectionRef() {
+            // Use private data path: /artifacts/{appId}/users/{userId}/{your_collection_name}
+            const notesCollectionPath = `/artifacts/${appId}/users/${userId}/notes`;
+            return collection(db, notesCollectionPath);
+        }
+
+        function listenForNotes() {
+            if (!db || !userId) return;
+
+            if (notesSnapshotUnsubscribe) {
+                notesSnapshotUnsubscribe(); // Unsubscribe from previous user/state
+            }
+
+            const q = query(getNotesCollectionRef());
+
+            notesSnapshotUnsubscribe = onSnapshot(q, (snapshot) => {
+                allNotes = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                })).sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)); // Sort newest first
+
+                renderNotesList();
+            }, (error) => {
+                showMessage(`नोट्स लोड करने में त्रुटि: ${error.message}`, true);
+            });
+        }
+
+        function renderNotesList() {
+            const listContainer = document.getElementById('notes-list');
+            listContainer.innerHTML = '';
+
+            if (allNotes.length === 0) {
+                listContainer.innerHTML = '<p class="text-gray-500 text-center mt-4">अभी कोई नोट सेव नहीं है। नया नोट जोड़ें!</p>';
+                return;
+            }
+
+            allNotes.forEach(note => {
+                const noteElement = document.createElement('div');
+                const typeIcon = getFileIcon(note.type);
+                
+                noteElement.className = 'flex justify-between items-center p-4 mb-2 bg-white rounded-lg shadow hover:shadow-md transition cursor-pointer large-touch-target';
+                noteElement.innerHTML = `
+                    <div class="flex items-center space-x-3 w-4/5">
+                        <i class="${typeIcon} text-xl text-blue-500"></i>
+                        <span class="font-semibold text-gray-800 truncate">${note.title}</span>
+                    </div>
+                    <button data-id="${note.id}" class="delete-note-btn text-red-500 hover:text-red-700 p-2 rounded-full large-touch-target" title="डिलीट करें">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                `;
+                noteElement.querySelector('span').addEventListener('click', () => openNoteModal(note.id));
+                noteElement.querySelector('.delete-note-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteNote(note.id);
+                });
+                listContainer.appendChild(noteElement);
+            });
+        }
+
+        function getFileIcon(type) {
+            switch (type) {
+                case 'html': return 'fab fa-html5 text-orange-600';
+                case 'css': return 'fab fa-css3-alt text-blue-600';
+                case 'js': return 'fab fa-js-square text-yellow-500';
+                case 'ts': return 'fas fa-code text-blue-800';
+                case 'tsx': return 'fab fa-react text-blue-400';
+                case 'doc': return 'fas fa-file-word text-blue-500';
+                case 'pdf': return 'fas fa-file-pdf text-red-600';
+                case 'img': return 'fas fa-image text-green-500';
+                case 'audio': return 'fas fa-volume-up text-purple-500';
+                case 'video': return 'fas fa-video text-red-700';
+                default: return 'fas fa-file-alt'; // General text
+            }
+        }
+
+        async function saveNote(id, title, content, type) {
+            if (!db || !userId) return showMessage('लॉगिन नहीं है। कृपया पहले साइन इन करें।', true);
+            
+            // Basic validation
+            if (!title.trim()) return showMessage('कृपया नोट के लिए एक शीर्षक (Title) दर्ज करें।', true);
+            if (!content.trim()) return showMessage('नोट का कंटेंट खाली नहीं हो सकता।', true);
+
+            const noteData = {
+                title: title.trim(),
+                content: content.trim(),
+                type: type,
+                timestamp: new Date()
+            };
+
+            try {
+                if (id) {
+                    await updateDoc(doc(getNotesCollectionRef(), id), noteData);
+                    showMessage('नोट सफलतापूर्वक अपडेट किया गया!', false);
+                } else {
+                    await addDoc(getNotesCollectionRef(), noteData);
+                    showMessage('नया नोट सफलतापूर्वक सेव किया गया!', false);
+                }
+                document.getElementById('new-note-form').reset();
+                document.getElementById('new-note-content').innerHTML = ''; // Clear rich text area
+            } catch (e) {
+                showMessage(`नोट सेव करने में त्रुटि: ${e.message}`, true);
+            }
+        }
+        
+        async function deleteNote(id) {
+            if (!db || !userId) return showMessage('लॉगिन नहीं है।', true);
+            // Replaced alert() with confirm() which we should try to avoid, but is fine here for deletion confirmation
+            if (!confirm('क्या आप वाकई इस नोट को डिलीट करना चाहते हैं?')) return; 
+
+            try {
+                await deleteDoc(doc(getNotesCollectionRef(), id));
+                showMessage('नोट सफलतापूर्वक डिलीट किया गया।', false);
+                if (currentNoteId === id) {
+                    closeNoteModal();
+                }
+            } catch (e) {
+                showMessage(`नोट डिलीट करने में त्रुटि: ${e.message}`, true);
+            }
+        }
+
+        function openNoteModal(id) {
+            const note = allNotes.find(n => n.id === id);
+            if (!note) return showMessage('नोट नहीं मिला।', true);
+
+            currentNoteId = id;
+
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content-editable');
+            const modalType = document.getElementById('modal-file-type');
+            const saveModalBtn = document.getElementById('save-modal-btn');
+            const modalToolbar = document.getElementById('modal-toolbar');
+
+            modalTitle.value = note.title;
+            modalType.value = note.type;
+            
+            // Set content and disable rich text for code files
+            if (['html', 'css', 'js', 'ts', 'tsx'].includes(note.type)) {
+                modalContent.textContent = note.content; // Use textContent for code
+                modalContent.setAttribute('contenteditable', 'true'); // Still editable as code
+                modalToolbar.classList.add('hidden');
+            } else {
+                modalContent.innerHTML = note.content; // Use innerHTML for rich text
+                modalContent.setAttribute('contenteditable', 'true');
+                modalToolbar.classList.remove('hidden');
+            }
+
+            modalContent.classList.remove('hidden'); // Ensure it's visible
+            
+            // Update the save button handler
+            saveModalBtn.onclick = () => {
+                const newTitle = modalTitle.value;
+                const newType = modalType.value;
+                // Get content based on type (textContent for code, innerHTML for rich text)
+                const newContent = ['html', 'css', 'js', 'ts', 'tsx'].includes(newType) 
+                    ? modalContent.textContent 
+                    : modalContent.innerHTML;
+
+                saveNote(id, newTitle, newContent, newType);
+                closeNoteModal();
+            };
+
+            document.getElementById('note-modal').classList.remove('hidden');
+        }
+
+        function closeNoteModal() {
+            document.getElementById('note-modal').classList.add('hidden');
+            currentNoteId = null;
+        }
+
+        // --- Auth Screen Logic ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            document.getElementById('loading-screen').classList.remove('hidden');
+            
+            const authScreen = document.getElementById('auth-screen');
+            const authActionBtn = document.getElementById('auth-action-btn');
+            const authToggleLink = document.getElementById('auth-toggle-link');
+            const authHeading = document.getElementById('auth-heading');
+            
+            let isSignUp = false; // Default to Sign In
+            
+            // Toggle between Sign In and Sign Up
+            authToggleLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                isSignUp = !isSignUp;
+                authHeading.innerText = isSignUp ? 'रजिस्टर (नया खाता बनाएँ)' : 'साइन इन करें';
+                authActionBtn.innerText = isSignUp ? 'रजिस्टर करें' : 'साइन इन करें';
+                authToggleLink.innerText = isSignUp ? 'क्या आपका खाता पहले से है? साइन इन करें' : 'नया खाता बनाएँ (रजिस्टर करें)';
+            });
+
+            // Handle Sign In / Sign Up Action
+            authActionBtn.addEventListener('click', async () => {
+                const email = document.getElementById('auth-email').value;
+                const password = document.getElementById('auth-password').value;
+                localStorage.removeItem('user_signed_out'); // Clear sign out flag on attempted sign in/up
+
+                // Basic validation
+                if (!email || !password) return showMessage('कृपया ईमेल और पासवर्ड दोनों दर्ज करें।', true);
+                if (password.length < 6) return showMessage('पासवर्ड बहुत कमजोर है। कृपया कम से कम 6 अक्षर/संख्या का उपयोग करें।', true);
+
+
+                try {
+                    if (isSignUp) {
+                        // Sign Up
+                        await createUserWithEmailAndPassword(auth, email, password);
+                        showMessage('खाता सफलतापूर्वक बन गया! अब आप लॉगिन हैं।', false);
+                    } else {
+                        // Sign In
+                        await signInWithEmailAndPassword(auth, email, password);
+                        showMessage('सफलतापूर्वक साइन इन किया गया!', false);
+                    }
+                    // Auth state change listener will handle the rest (showing main content)
+                    document.getElementById('auth-screen').classList.add('hidden');
+
+                } catch (error) {
+                    const errorMessage = getAuthErrorMessage(error.code);
+                    showMessage(errorMessage, true);
+                    console.error("Firebase Auth Error:", error.code, error.message);
+                }
+            });
+
+            // Password Show/Hide Toggle
+            const passwordInput = document.getElementById('auth-password');
+            const passwordToggle = document.getElementById('password-toggle');
+            passwordToggle.addEventListener('click', () => {
+                const type = passwordInput.type === 'password' ? 'text' : 'password';
+                passwordInput.type = type;
+                passwordToggle.querySelector('i').className = type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+            });
+            
+            // --- New Note Form Handler ---
+            document.getElementById('new-note-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const title = document.getElementById('new-note-title').value;
+                const content = document.getElementById('new-note-content').innerHTML; // Use innerHTML for rich text
+                const type = document.getElementById('new-note-file-type').value;
+
+                saveNote(null, title, content, type);
+                document.getElementById('new-note-content').innerHTML = '';
+            });
+
+            // --- Rich Text Editor Logic ---
+            const applyFormat = (command, value = null) => {
+                // Determine which contenteditable area is currently active
+                const activeEditor = currentNoteId 
+                    ? document.getElementById('modal-content-editable') 
+                    : document.getElementById('new-note-content');
+                
+                if (activeEditor && activeEditor.getAttribute('contenteditable') === 'true') {
+                    document.execCommand(command, false, value);
+                    activeEditor.focus();
+                }
+            };
+
+            // Setup listeners for toolbar buttons (New Note Form)
+            document.querySelectorAll('#new-note-toolbar button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const command = button.dataset.command;
+                    const value = button.dataset.value;
+                    applyFormat(command, value);
+                });
+            });
+
+            // Setup listeners for color/size inputs (New Note Form)
+            document.getElementById('new-note-text-color').addEventListener('input', (e) => {
+                applyFormat('foreColor', e.target.value);
+            });
+            document.getElementById('new-note-bg-color').addEventListener('input', (e) => {
+                applyFormat('backColor', e.target.value);
+            });
+            document.getElementById('new-note-font-size').addEventListener('change', (e) => {
+                // Map select values to HTML font sizes (1-7)
+                const sizeMap = { 'small': 2, 'medium': 3, 'large': 5 };
+                applyFormat('fontSize', sizeMap[e.target.value]);
+            });
+
+            // Setup listeners for toolbar buttons (Modal)
+            document.querySelectorAll('#modal-toolbar button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const command = button.dataset.command;
+                    const value = button.dataset.value;
+                    applyFormat(command, value);
+                });
+            });
+            
+            // Setup listeners for color/size inputs (Modal)
+            document.getElementById('modal-text-color').addEventListener('input', (e) => {
+                applyFormat('foreColor', e.target.value);
+            });
+            document.getElementById('modal-bg-color').addEventListener('input', (e) => {
+                applyFormat('backColor', e.target.value);
+            });
+            document.getElementById('modal-font-size').addEventListener('change', (e) => {
+                const sizeMap = { 'small': 2, 'medium': 3, 'large': 5 };
+                applyFormat('fontSize', sizeMap[e.target.value]);
+            });
+
+            // Handle type change in modal to toggle rich text toolbar
+            document.getElementById('modal-file-type').addEventListener('change', (e) => {
+                const type = e.target.value;
+                const modalToolbar = document.getElementById('modal-toolbar');
+                if (['html', 'css', 'js', 'ts', 'tsx'].includes(type)) {
+                    modalToolbar.classList.add('hidden');
+                } else {
+                    modalToolbar.classList.remove('hidden');
+                }
+            });
+
+        });
+    </script>
+
+    <!-- PWA Status -->
+    <div id="pwa-status" class="fixed top-0 left-0 right-0 bg-blue-100 text-blue-800 text-center text-xs py-1 font-medium">
+        PWA स्थिति: जाँच हो रही है...
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-gray-100 flex items-center justify-center z-50 hidden">
+        <div class="text-center p-8 bg-white shadow-xl rounded-lg">
+            <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
+            <p class="text-lg font-semibold text-gray-700">क्लाउड नोटपैड लोड हो रहा है...</p>
+            <p class="text-sm text-gray-500 mt-2">Firebase प्रमाणीकरण की प्रतीक्षा है।</p>
+        </div>
+    </div>
+    
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="container pt-12 hidden">
+        <div class="bg-white p-6 md:p-10 shadow-xl rounded-xl">
+            <h2 id="auth-heading" class="text-3xl font-bold text-center text-gray-800 mb-6">साइन इन करें</h2>
+            
+            <div id="message-container"></div>
+
+            <form id="auth-form" class="space-y-4">
+                <div>
+                    <label for="auth-email" class="block text-sm font-medium text-gray-700 mb-1">ईमेल</label>
+                    <input type="email" id="auth-email" class="w-full p-3 border border-gray-300 rounded-lg custom-focus" placeholder="आपका ईमेल पता" required>
+                </div>
+                <div>
+                    <label for="auth-password" class="block text-sm font-medium text-gray-700 mb-1">पासवर्ड</label>
+                    <div class="relative">
+                        <input type="password" id="auth-password" class="w-full p-3 border border-gray-300 rounded-lg custom-focus pr-10" placeholder="कम से कम 6 अक्षर" required>
+                        <span id="password-toggle" class="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer large-touch-target">
+                            <i class="fas fa-eye text-gray-400 hover:text-gray-600"></i>
+                        </span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">पासवर्ड 6 या अधिक अक्षरों का होना चाहिए।</p>
+                </div>
+                <button type="button" id="auth-action-btn" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md large-touch-target">साइन इन करें</button>
+            </form>
+            <p class="mt-6 text-center text-sm">
+                <a href="#" id="auth-toggle-link" class="text-blue-600 hover:underline">नया खाता बनाएँ (रजिस्टर करें)</a>
+            </p>
+        </div>
+    </div>
+
+
+    <!-- Main App Content -->
+    <div id="main-app-content" class="container hidden">
+
+        <!-- Status & Header -->
+        <header class="flex justify-between items-center py-4 border-b border-gray-200">
+            <h1 class="text-2xl font-bold text-gray-800">क्लाउड PWA नोटपैड</h1>
+            <button id="logout-btn" class="bg-red-500 text-white text-sm py-2 px-4 rounded-lg hover:bg-red-600 transition-colors large-touch-target">
+                <i class="fas fa-sign-out-alt mr-1"></i> लॉगआउट
+            </button>
+        </header>
+        
+        <div id="auth-status-container" class="mt-4">
+             <p id="auth-status" class="bg-yellow-100 text-yellow-800 p-2 rounded-lg text-sm font-medium">प्रमाणीकरण की जाँच हो रही है...</p>
+        </div>
+        
+        <div id="message-container"></div>
+        
+        <!-- Add New Note Form -->
+        <div class="mt-6 bg-white p-5 rounded-xl shadow-md border-t-4 border-blue-500">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">नया नोट/फ़ाइल जोड़ें</h2>
+            <form id="new-note-form" class="space-y-4">
+                <div>
+                    <label for="new-note-title" class="block text-sm font-medium text-gray-700 mb-1">शीर्षक (Title)</label>
+                    <input type="text" id="new-note-title" class="w-full p-3 border border-gray-300 rounded-lg custom-focus" placeholder="जैसे: मेरा पहला नोट, index.html" required>
+                </div>
+                
+                <div>
+                    <label for="new-note-file-type" class="block text-sm font-medium text-gray-700 mb-1">फ़ाइल का प्रकार</label>
+                    <select id="new-note-file-type" class="w-full p-3 border border-gray-300 rounded-lg custom-focus">
+                        <option value="text">सामान्य टेक्स्ट/डॉक्यूमेंट</option>
+                        <option value="html">HTML कोड</option>
+                        <option value="css">CSS कोड</option>
+                        <option value="js">JavaScript कोड</option>
+                        <option value="ts">TypeScript कोड (.ts)</option>
+                        <option value="tsx">React/TypeScript कोड (.tsx)</option>
+                        <option value="doc">MS Word/सामान्य डॉक्यूमेंट (.doc)</option>
+                        <!-- Added for user's request, but remember these are stored as text/HTML, not binary -->
+                        <option value="pdf">PDF (सिर्फ टेक्स्ट)</option>
+                        <option value="img">Image (सिर्फ टेक्स्ट)</option>
+                        <option value="audio">Audio (सिर्फ टेक्स्ट)</option>
+                        <option value="video">Video (सिर्फ टेक्स्ट)</option>
+                    </select>
+                </div>
+
+                <!-- Rich Text Toolbar -->
+                <div id="new-note-toolbar" class="toolbar bg-gray-50 p-2 rounded-lg border flex flex-wrap items-center gap-2">
+                    <button data-command="bold" title="बोल्ड (Bold)" class="large-touch-target"><i class="fas fa-bold"></i></button>
+                    <button data-command="italic" title="इटैलिक (Italic)" class="large-touch-target"><i class="fas fa-italic"></i></button>
+                    <button data-command="underline" title="अंडरलाइन (Underline)" class="large-touch-target"><i class="fas fa-underline"></i></button>
+                    <button data-command="insertUnorderedList" title="बुलेट लिस्ट" class="large-touch-target"><i class="fas fa-list-ul"></i></button>
+                    <span class="text-sm">रंग:</span>
+                    <input type="color" id="new-note-text-color" title="टेक्स्ट रंग" class="w-6 h-6 rounded large-touch-target">
+                    <span class="text-sm">पृष्ठभूमि:</span>
+                    <input type="color" id="new-note-bg-color" title="पृष्ठभूमि रंग" class="w-6 h-6 rounded large-touch-target">
+                    <select id="new-note-font-size" class="p-1 border rounded text-sm large-touch-target">
+                        <option value="medium">Medium</option>
+                        <option value="small">Small</option>
+                        <option value="large">Large</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="new-note-content" class="block text-sm font-medium text-gray-700 mb-1">कंटेंट/कोड</label>
+                    <!-- Content Editable for Rich Text -->
+                    <div id="new-note-content" contenteditable="true" class="content-editable custom-focus" placeholder="अपना नोट या कोड यहाँ लिखें..."></div>
+                </div>
+                
+                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-md large-touch-target">
+                    <i class="fas fa-save mr-2"></i> नोट/फ़ाइल सेव करें
+                </button>
+            </form>
+        </div>
+
+        <!-- Notes List -->
+        <div class="mt-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">आपके क्लाउड नोट्स</h2>
+            <div id="notes-list" class="scroll-list">
+                <!-- Notes will be rendered here -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Note Modal (Detail View) -->
+    <div id="note-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 hidden z-40">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">नोट संपादित करें (Edit Note)</h2>
+                
+                <form class="space-y-4">
+                    <div>
+                        <label for="modal-title" class="block text-sm font-medium text-gray-700 mb-1">शीर्षक</label>
+                        <input type="text" id="modal-title" class="w-full p-3 border border-gray-300 rounded-lg custom-focus" required>
+                    </div>
+
+                    <div>
+                        <label for="modal-file-type" class="block text-sm font-medium text-gray-700 mb-1">फ़ाइल का प्रकार</label>
+                        <select id="modal-file-type" class="w-full p-3 border border-gray-300 rounded-lg custom-focus">
+                            <option value="text">सामान्य टेक्स्ट/डॉक्यूमेंट</option>
+                            <option value="html">HTML कोड</option>
+                            <option value="css">CSS कोड</option>
+                            <option value="js">JavaScript कोड</option>
+                            <option value="ts">TypeScript कोड (.ts)</option>
+                            <option value="tsx">React/TypeScript कोड (.tsx)</option>
+                            <option value="doc">MS Word/सामान्य डॉक्यूमेंट (.doc)</option>
+                            <option value="pdf">PDF (सिर्फ टेक्स्ट)</option>
+                            <option value="img">Image (सिर्फ टेक्स्ट)</option>
+                            <option value="audio">Audio (सिर्फ टेक्स्ट)</option>
+                            <option value="video">Video (सिर्फ टेक्स्ट)</option>
+                        </select>
+                    </div>
+
+                    <!-- Rich Text Toolbar (Modal) -->
+                    <div id="modal-toolbar" class="toolbar bg-gray-50 p-2 rounded-lg border flex flex-wrap items-center gap-2">
+                        <button data-command="bold" title="बोल्ड (Bold)" class="large-touch-target"><i class="fas fa-bold"></i></button>
+                        <button data-command="italic" title="इटैलिक (Italic)" class="large-touch-target"><i class="fas fa-italic"></i></button>
+                        <button data-command="underline" title="अंडरलाइन (Underline)" class="large-touch-target"><i class="fas fa-underline"></i></button>
+                        <button data-command="insertUnorderedList" title="बुलेट लिस्ट" class="large-touch-target"><i class="fas fa-list-ul"></i></button>
+                        <span class="text-sm">रंग:</span>
+                        <input type="color" id="modal-text-color" title="टेक्स्ट रंग" class="w-6 h-6 rounded large-touch-target">
+                        <span class="text-sm">पृष्ठभूमि:</span>
+                        <input type="color" id="modal-bg-color" title="पृष्ठभूमि रंग" class="w-6 h-6 rounded large-touch-target">
+                        <select id="modal-font-size" class="p-1 border rounded text-sm large-touch-target">
+                            <option value="medium">Medium</option>
+                            <option value="small">Small</option>
+                            <option value="large">Large</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="modal-content-editable" class="block text-sm font-medium text-gray-700 mb-1">कंटेंट/कोड</label>
+                        <div id="modal-content-editable" contenteditable="true" class="content-editable custom-focus"></div>
+                    </div>
+
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button type="button" onclick="closeNoteModal()" class="py-2 px-4 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 large-touch-target">बंद करें</button>
+                        <button type="button" id="save-modal-btn" class="py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 large-touch-target">सेव करें</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+
+
